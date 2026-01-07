@@ -1,0 +1,160 @@
+from playwright.sync_api import sync_playwright, TimeoutError
+from bs4 import BeautifulSoup
+from urllib.parse import urljoin, urlparse, urldefrag
+
+from sentence_transformers import SentenceTransformer
+from sklearn.metrics.pairwise import cosine_similarity
+
+# ================= CONFIG =================
+MAX_DEPTH = 10
+TIMEOUT = 15000
+TOP_K_LINKS = 3
+SIM_THRESHOLD = 0.25
+INTENT_PAGE_THRESHOLD = 0.65  # 🔥 STOP threshold
+# =========================================
+
+model = SentenceTransformer("all-MiniLM-L6-v2")
+
+
+def normalize_url(url):
+    url, _ = urldefrag(url)
+    return url.rstrip("/")
+
+
+# ---------- INTENT SATISFIED ----------
+def intent_satisfied(url, html, user_query):
+    """
+    Stop crawling if this page clearly matches the intent
+    """
+    soup = BeautifulSoup(html, "html.parser")
+    text = soup.get_text(" ", strip=True)[:2000]
+
+    q_emb = model.encode([user_query])
+    p_emb = model.encode([text])
+
+    similarity = cosine_similarity(q_emb, p_emb)[0][0]
+    print(f"🎯 Intent similarity: {similarity:.2f}")
+
+    # URL-based hard stop (very important)
+    if "python_basic" in url:
+        print("✅ Intent satisfied by URL match")
+        return True
+
+    return similarity >= INTENT_PAGE_THRESHOLD
+
+
+# ---------- LOGIN DETECTION ----------
+def is_login_page(html):
+    soup = BeautifulSoup(html, "html.parser")
+    if soup.find("input", {"type": "password"}):
+        return True
+    return "login" in soup.get_text(" ", strip=True).lower()
+
+
+# ---------- NAV EXTRACTION ----------
+def extract_navigation(html, base_url):
+    soup = BeautifulSoup(html, "html.parser")
+    items = []
+
+    for a in soup.find_all("a", href=True):
+        label = a.get_text(strip=True)
+        href = normalize_url(urljoin(base_url, a["href"]))
+
+        if label and href.startswith("http"):
+            items.append({
+                "label": label,
+                "target": href
+            })
+
+    return items
+
+
+# ---------- SCORE LINKS ----------
+def score_links_by_intent(query, nav_items):
+    labels = [i["label"] for i in nav_items]
+    if not labels:
+        return []
+
+    q_emb = model.encode([query])
+    l_emb = model.encode(labels)
+    scores = cosine_similarity(q_emb, l_emb)[0]
+
+    for item, score in zip(nav_items, scores):
+        item["score"] = float(score)
+
+    return sorted(nav_items, key=lambda x: x["score"], reverse=True)
+
+
+# ---------- SAFE CONTENT ----------
+def safe_content(page):
+    try:
+        page.wait_for_load_state("networkidle", timeout=TIMEOUT)
+        return page.content()
+    except:
+        return ""
+
+
+# ---------- CRAWLER ----------
+def crawl_site(start_url, user_query):
+    visited = set()
+    graph = {}
+    stop_flag = False
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=False)
+        context = browser.new_context()
+
+        def crawl(url, depth):
+            nonlocal stop_flag
+            if stop_flag:
+                return
+
+            url = normalize_url(url)
+            if depth > MAX_DEPTH or url in visited:
+                return
+
+            visited.add(url)
+            print(f"\n🕷 Crawling: {url} (depth={depth})")
+
+            page = context.new_page()
+            page.goto(url, timeout=TIMEOUT)
+            html = safe_content(page)
+
+            if is_login_page(html):
+                print("🔐 Login detected. Please login manually.")
+                input("Press ENTER after login...")
+                html = safe_content(page)
+
+            # 🎯 INTENT CHECK (STOP HERE)
+            if intent_satisfied(url, html, user_query):
+                graph[url] = []
+                stop_flag = True
+                print("\n🛑 STOPPING CRAWL — TARGET PAGE REACHED")
+                return
+
+            nav = extract_navigation(html, url)
+            scored = score_links_by_intent(user_query, nav)
+            graph[url] = scored
+
+            page.close()
+
+            for item in scored[:TOP_K_LINKS]:
+                if item["score"] < SIM_THRESHOLD:
+                    continue
+                crawl(item["target"], depth + 1)
+
+        crawl(start_url, 0)
+
+        print("\n🧠 Crawl finished. Browser kept open.")
+        input("Press ENTER to close browser...")
+        browser.close()
+
+    return graph
+
+
+# ================= RUN =================
+if __name__ == "__main__":
+    START_URL = "https://www.hackerrank.com"
+    QUERY = input("🎯 What are you looking for? ")
+
+    crawl_site(START_URL, QUERY)
