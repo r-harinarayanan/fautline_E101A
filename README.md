@@ -1,230 +1,220 @@
-🧠 Semantic AI Navigation Widget
+# Semantic AI Navigation Agent
 
-An AI-powered semantic navigation agent that understands a user’s goal, analyzes a website’s structure using Playwright + Sentence Transformers, and automatically redirects the user to the most relevant page — all via a floating browser widget.
+An AI-powered web navigation system that understands **what you're looking for**, crawls a website's structure using a headless browser, and automatically redirects you to the most relevant page — without keyword matching.
 
-This project combines:
+Built for [Hacktide](https://github.com/sreenand-tm/fautline_E101A) hackathon.
 
-🐍 Python (semantic crawling + reasoning)
+---
 
-🌐 Flask API (local backend)
+## The Problem
 
-🧩 JavaScript browser widget / Chrome extension
+Traditional search boxes rely on exact keyword matching. If you visit an unfamiliar site and type *"python basics"*, you might get zero results or end up on the wrong page. Navigation menus require you to already know the site's structure.
 
-🤖 NLP-based intent matching (Sentence Transformers)
+**This project solves that.** Just tell it what you want in plain English — the AI figures out where to go.
 
-✨ What This Does
+---
 
-Instead of manually clicking through menus, users can simply say what they want, and the AI agent will:
+## How It Works
 
-Analyze the current website structure
+```
+Browser (any website)
+       │
+       │  You type: "python basic problems"
+       ▼
+Chrome Extension Widget  (content.js)
+       │
+       │  POST { url, goal }
+       ▼
+Flask API  (backend/app.py)
+       │
+       ▼
+SemanticAgent
+  ├── Loads the page with Playwright (headless Chromium)
+  ├── Extracts headings, paragraphs, and all internal links
+  ├── Encodes page content + link labels using SentenceTransformers
+  ├── Scores each candidate using cosine similarity vs your goal
+  ├── Follows the top-K most relevant links (BFS)
+  └── Returns the best-matching URL
+       │
+       ▼
+Widget auto-redirects you there
+```
 
-Score pages and navigation links semantically
+---
 
-Find the best-matching page
+## Project Structure
 
-Automatically redirect the user there
-
-Example:
-
-User goal: “Python basic problems”
-Result: AI navigates HackerRank → Domains → Python → Basic Data Types
-
-🏗️ Project Architecture
-Browser (Any Website)
-   │
-   │  Widget (content.js + CSS)
-   ▼
-Flask API (localhost:5000)
-   │
-   │  Semantic reasoning
-   ▼
-Playwright Headless Browser
-   │
-   │  HTML + links
-   ▼
-SentenceTransformer (NLP scoring)
-
-📂 Repository Structure
-├── app.py                # Flask + Playwright semantic agent
-│
-├── widget/
-│   ├── content.js            # Floating AI widget
-│   ├── style.css             # Widget styling
-│   └── manifest.json         # Chrome extension config
-│
+```
+fautline_E101A/
+├── backend/
+│   ├── app.py          # Flask API + SemanticAgent (server mode)
+│   └── end.py          # Standalone CLI crawler (testing / demo)
+├── extension/
+│   ├── manifest.json   # Chrome Extension config
+│   ├── content.js      # Floating widget injected on every page
+│   └── style.css       # Widget styling
 └── README.md
+```
 
-🚀 Features
+---
 
-🔍 Goal-based semantic crawling (not keyword matching)
+## Features
 
-🧭 Intelligent navigation path discovery
+- **Semantic intent matching** — uses sentence embeddings, not keyword search
+- **BFS crawl with scoring** — explores the site intelligently, not randomly
+- **Goal threshold** — stops as soon as a high-confidence match is found
+- **Domain-restricted** — never crawls outside the current site
+- **Duplicate URL deduplication** — avoids re-scoring the same link dozens of times
+- **Thread-safe API** — Playwright lock prevents crashes on concurrent requests
+- **Minimizable widget** — close or collapse the UI without losing your session
+- **XSS protection** — page titles are escaped before rendering in the widget
+- **Configurable** — all thresholds adjustable via constants at the top of each file
 
-🧠 SentenceTransformer-based intent scoring
+---
 
-🕷️ Headless browser analysis with Playwright
+## Tech Stack
 
-🧩 Floating widget UI (injectable on any site)
+| Layer | Technology |
+|---|---|
+| AI / NLP | `sentence-transformers` (all-MiniLM-L6-v2) |
+| Similarity | `scikit-learn` cosine similarity |
+| Browser automation | `Playwright` (headless Chromium) |
+| HTML parsing | `BeautifulSoup4` |
+| Backend API | `Flask` + `flask-cors` |
+| Frontend | Chrome Extension (Manifest V3) |
 
-🔁 Auto-redirect to best page
+---
 
-🔒 Domain-restricted crawling (safe)
+## Setup
 
-⚙️ Requirements
-Python
+### 1. Clone the repo
 
-Python 3.10+ (recommended: 3.11)
+```bash
+git clone https://github.com/r-harinarayanan/fautline_E101A.git
+cd fautline_E101A
+```
 
-Internet access (for first-time model download)
+### 2. Create a virtual environment
 
-Python Packages
-
-flask
-
-flask-cors
-
-playwright
-
-sentence-transformers
-
-scikit-learn
-
-beautifulsoup4
-
-📦 Backend Setup (Python)
-1️⃣ Create a virtual environment (recommended)
+```bash
 python -m venv venv
 
-
-Activate:
-
-Windows
-
+# Windows
 venv\Scripts\activate
 
-
-Linux / macOS
-
+# Mac / Linux
 source venv/bin/activate
+```
 
-2️⃣ Install dependencies
+### 3. Install dependencies
+
+```bash
 pip install flask flask-cors playwright sentence-transformers scikit-learn beautifulsoup4
+```
 
-3️⃣ Install Playwright browsers (IMPORTANT)
+### 4. Install Playwright browsers
+
+```bash
 playwright install
+```
 
-4️⃣ Run the backend server
+> First run downloads the NLP model (~90 MB). This only happens once.
+
+### 5. Start the backend
+
+```bash
+cd backend
 python app.py
-
+```
 
 You should see:
-
+```
 Initializing Semantic Engine...
-Running on http://127.0.0.1:5000
+ * Running on http://127.0.0.1:5000
+```
 
+### 6. Load the Chrome Extension
 
-⚠️ First run may take 1–2 minutes to download the NLP model.
+1. Open Chrome and go to `chrome://extensions`
+2. Enable **Developer mode** (top right toggle)
+3. Click **Load unpacked**
+4. Select the `extension/` folder
+5. Done — the widget appears on every website
 
-🧩 Chrome Extension Setup
-1️⃣ Open Chrome Extensions
-chrome://extensions
+---
 
+## API
 
-Enable:
+### `POST /find-best`
 
-Developer mode (top right)
-
-2️⃣ Load the extension
-
-Click Load unpacked
-
-Select the extension/ folder
-
-3️⃣ Done 🎉
-
-The widget will now appear on every website you visit.
-
-🧪 How to Use
-
-Open any website
-
-Look at the bottom-right corner
-
-Enter your goal (e.g., “python basics”)
-
-Click Find & Auto-Open
-
-The AI agent:
-
-analyzes the site
-
-finds the best page
-
-redirects you automatically
-
-🔐 API Endpoint
-POST /find-best
-
-Request
-
+**Request**
+```json
 {
-  "url": "https://example.com",
-  "goal": "your intent here"
+  "url": "https://www.hackerrank.com",
+  "goal": "python basic problems"
 }
+```
 
-
-Response
-
+**Response**
+```json
 {
-  "best_url": "https://example.com/page",
-  "title": "Page Title",
-  "score": 0.91,
-  "steps": "Home ➔ Section ➔ Target",
-  "message": "Found high-potential match"
+  "best_url": "https://www.hackerrank.com/domains/python",
+  "title":    "Python | HackerRank",
+  "score":    0.847,
+  "steps":    "Home -> Domains -> Python",
+  "message":  "Found: Python | HackerRank"
 }
+```
 
-🧠 Why This Is Different
+**Error responses**
 
-❌ Traditional crawlers → depth-first / brute-force
-❌ Search boxes → keyword-based
+| Status | Meaning |
+|---|---|
+| 400 | Missing URL / goal, or invalid URL format |
+| 503 | Server busy (another crawl in progress) |
 
-✅ This system reasons semantically, like a human navigating a site.
+---
 
-⚠️ Known Limitations
+## Standalone CLI (no extension needed)
 
-Requires local backend running
+```bash
+cd backend
+python end.py
+```
 
-First-time model download is slow
+Prompts you for a start URL and goal, opens a visible browser, and prints the navigation graph + best match.
 
-JS-heavy sites may limit link visibility
+---
 
-Login-required pages may reduce accuracy
+## Known Limitations
 
-🛠️ Future Improvements
+- Requires the local backend to be running
+- JavaScript-heavy SPAs may hide links until interaction
+- Login-protected pages reduce accuracy
+- One crawl at a time (sequential by design for stability)
 
-Background service worker (no Flask dependency)
+---
 
-UI history + undo navigation
+## Future Improvements
 
-Graph visualization of site structure
+- [ ] Background service worker (remove Flask dependency)
+- [ ] Persistent embedding cache across sessions
+- [ ] Priority queue BFS (score-weighted traversal)
+- [ ] Dynamic interaction (click dropdowns to reveal hidden links)
+- [ ] Firefox / Edge extension support
+- [ ] Graph visualization of explored site structure
 
-Lightweight embedding model for faster startup
+---
 
-Firefox / Edge extension support
+## Use Cases
 
-📜 License
+- Quickly navigate unfamiliar documentation sites
+- Automation agents that need to find specific content
+- Accessibility tool for users who struggle with site navigation
+- Research assistance on large knowledge bases
 
-MIT License
-Free to use, modify, and extend.
+---
 
-🙌 Credits
+## License
 
-Built using:
-
-Playwright
-
-Sentence Transformers
-
-Flask
-
-Chrome Extensions API
+MIT — free to use, modify, and extend.
